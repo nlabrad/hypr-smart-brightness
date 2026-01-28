@@ -8,7 +8,7 @@ Seamlessly controls both **Laptop Backlights** and **External Monitors (DDC/CI)*
 - 🚀 **Extreme Optimization**: Reduces `ddcutil` latency from ~500ms to ~20ms using bus caching and optimized flags.
 - 💻 **Laptop Support**: Native kernel control for `eDP` / `LCD` screens.
 - 🖥️ **Desktop Support**: Full DDC/CI control for external displays.
-- 🎯 **Snap-to-Grid**: Automatically rounds brightness to the nearest step multiple (e.g., 17% -> 20%).
+- 🎯 **Smart Rounding**: Automatically rounds brightness to the nearest step multiple (e.g., 17% -> 20%).
 - 🧹 **Auto-Config**: Includes built-in install/uninstall commands to manage your Hyprland config cleanly.
 
 ## Dependencies
