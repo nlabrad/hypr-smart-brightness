@@ -5,7 +5,7 @@
 # both Laptop Backlights (via brightnessctl) and External Monitors (via ddcutil).
 
 # Configuration
-STEP=${2:-10}
+STEP=${2:-5}
 DIRECTION=$1
 
 # Paths
@@ -30,10 +30,28 @@ install_config() {
     fi
 
     # Determine where the conf file is.
-    # If installed in /usr/bin, we expect conf in /usr/share/hypr-smart-brightness/
-    # If running from local repo, it's in the same dir.
     if [ -f "$SCRIPT_DIR/$CONF_NAME" ]; then
+        # We are running from the repo/local dir.
         SOURCE_PATH="$SCRIPT_DIR/$CONF_NAME"
+        
+        # KEY FIX: Update the config file to point to THIS script's absolute path
+        # This ensures manual git clones work without adding to PATH.
+        SELF_PATH=$(realpath "$0")
+        
+        # Check if the config needs patching (if it doesn't contain the full path yet)
+        if ! grep -q "$SELF_PATH" "$SOURCE_PATH"; then
+             echo "Patching $CONF_NAME with absolute path..."
+             # We use a unique marker or just look for the default command name to replace
+             # Replaces "exec, hypr-smart-brightness" with "exec, /full/path/to/hypr-smart-brightness"
+             # But careful not to double-replace.
+             
+             # Reset to clean state first (in case it was already patched with a different path)
+             # We assume the clean repo version uses just "hypr-smart-brightness"
+             
+             # Actually, simpler: We force write the exec paths.
+             sed -i "s|exec, .*hypr-smart-brightness|exec, $SELF_PATH|g" "$SOURCE_PATH"
+        fi
+        
     elif [ -f "/usr/share/hypr-smart-brightness/$CONF_NAME" ]; then
         SOURCE_PATH="/usr/share/hypr-smart-brightness/$CONF_NAME"
     else
@@ -146,11 +164,17 @@ else
     [ -z "$CURRENT" ] && CURRENT=50
 fi
 
-# 3c. Calculate New Value
+# 3c. Calculate New Value (Snap to Grid)
 if [ "$DIRECTION" == "up" ]; then
-    NEW=$((CURRENT + STEP))
+    # Round UP to next multiple of STEP
+    # (Current / Step + 1) * Step
+    NEW=$(( (CURRENT / STEP + 1) * STEP ))
 else
-    NEW=$((CURRENT - STEP))
+    # Round DOWN to previous multiple of STEP
+    # If currently exactly on a step (e.g. 20), go to 10.
+    # If currently between steps (e.g. 17), go to 10.
+    # Math: ( (Current - 1) / Step ) * Step
+    NEW=$(( (CURRENT - 1) / STEP * STEP ))
 fi
 
 if [ "$NEW" -gt 100 ]; then NEW=100; fi
