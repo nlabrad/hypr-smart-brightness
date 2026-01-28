@@ -12,11 +12,13 @@ Seamlessly controls both **Laptop Backlights** and **External Monitors (DDC/CI)*
 
 ## Dependencies
 
-*   `hyprland`
-*   `jq`
-*   `ddcutil` (for external monitors)
-*   `brightnessctl` (for laptops)
-*   `swayosd` (Recommended for OSD feedback)
+The script will automatically check for these during installation:
+
+*   **hyprland**: Required for monitor detection.
+*   **jq**: Required for parsing monitor data.
+*   **ddcutil**: **Required** for external monitor support.
+*   **brightnessctl**: Required for laptop backlight support.
+*   **swayosd**: Recommended for the On-Screen Display (OSD) feedback.
 
 ## Installation
 
