@@ -24,6 +24,21 @@ OSD_CMD="swayosd-client"
 # Helper Functions
 # ==============================================================================
 install_config() {
+    # Check dependencies during install
+    echo "Checking dependencies..."
+    for cmd in hyprctl jq brightnessctl ddcutil; do
+        if command -v "$cmd" &> /dev/null; then
+            echo "  ✓ $cmd found"
+        else
+            echo "  ✗ $cmd NOT found"
+            [ "$cmd" == "ddcutil" ] && echo "    (Note: ddcutil is required for external monitor support)"
+        fi
+    done
+
+    if ! command -v swayosd-client &> /dev/null; then
+        echo "  ! swayosd-client NOT found (Optional: recommended for visual feedback)"
+    fi
+
     if [ ! -f "$HYPR_CONF" ]; then
         echo "Error: $HYPR_CONF not found."
         exit 1
@@ -41,14 +56,6 @@ install_config() {
         # Check if the config needs patching (if it doesn't contain the full path yet)
         if ! grep -q "$SELF_PATH" "$SOURCE_PATH"; then
              echo "Patching $CONF_NAME with absolute path..."
-             # We use a unique marker or just look for the default command name to replace
-             # Replaces "exec, hypr-smart-brightness" with "exec, /full/path/to/hypr-smart-brightness"
-             # But careful not to double-replace.
-             
-             # Reset to clean state first (in case it was already patched with a different path)
-             # We assume the clean repo version uses just "hypr-smart-brightness"
-             
-             # Actually, simpler: We force write the exec paths.
              sed -i "s|exec, .*hypr-smart-brightness|exec, $SELF_PATH|g" "$SOURCE_PATH"
         fi
         
