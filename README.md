@@ -8,6 +8,7 @@ Seamlessly controls both **Laptop Backlights** and **External Monitors (DDC/CI)*
 - 🚀 **Extreme Optimization**: Reduces `ddcutil` latency from ~500ms to ~20ms using bus caching and optimized flags.
 - 💻 **Laptop Support**: Native kernel control for `eDP` / `LCD` screens.
 - 🖥️ **Desktop Support**: Full DDC/CI control for external displays.
+- 🎯 **Snap-to-Grid**: Automatically rounds brightness to the nearest step multiple (e.g., 17% -> 20%).
 - 🧹 **Auto-Config**: Includes built-in install/uninstall commands to manage your Hyprland config cleanly.
 
 ## Dependencies
@@ -27,7 +28,7 @@ This keeps the script in your `~/Repos` folder and links it.
 
 1.  Clone the repository:
     ```bash
-    git clone https://github.com/YOUR_USERNAME/hypr-smart-brightness.git
+    git clone https://github.com/nlabrad/hypr-smart-brightness.git
     cd hypr-smart-brightness
     ```
 
@@ -54,7 +55,7 @@ Then you can safely delete the repository folder.
 
 The script uses a sourced configuration file (`hypr-smart-brightness.conf`) to avoid cluttering your main config. It handles:
 -   **Unbinding** default keys (to avoid double-events).
--   **Binding** standard keys (Step 10).
+-   **Binding** standard keys (Step 5).
 -   **Binding** Alt+Keys (Step 1 for precise control).
 
 You can edit `hypr-smart-brightness.conf` directly to change keys or step sizes.
