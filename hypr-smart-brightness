@@ -1,0 +1,174 @@
+#!/bin/bash
+# hypr-smart-brightness
+#
+# A smart brightness controller for Hyprland that seamlessly handles
+# both Laptop Backlights (via brightnessctl) and External Monitors (via ddcutil).
+
+# Configuration
+STEP=${2:-10}
+DIRECTION=$1
+
+# Paths
+CACHE_DIR="/tmp/hypr-smart-brightness"
+HYPR_CONF="$HOME/.config/hypr/hyprland.conf"
+# We assume the config file to source is in the same directory as the script if running locally,
+# or in a standard location if installed.
+# For this logic, we'll try to find where this script is located.
+SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
+CONF_NAME="hypr-smart-brightness.conf"
+
+# OSD Command (Default: swayosd-client)
+ENABLE_OSD=true
+OSD_CMD="swayosd-client"
+
+# Helper Functions
+# ==============================================================================
+install_config() {
+    if [ ! -f "$HYPR_CONF" ]; then
+        echo "Error: $HYPR_CONF not found."
+        exit 1
+    fi
+
+    # Determine where the conf file is.
+    # If installed in /usr/bin, we expect conf in /usr/share/hypr-smart-brightness/
+    # If running from local repo, it's in the same dir.
+    if [ -f "$SCRIPT_DIR/$CONF_NAME" ]; then
+        SOURCE_PATH="$SCRIPT_DIR/$CONF_NAME"
+    elif [ -f "/usr/share/hypr-smart-brightness/$CONF_NAME" ]; then
+        SOURCE_PATH="/usr/share/hypr-smart-brightness/$CONF_NAME"
+    else
+        echo "Error: Could not find $CONF_NAME."
+        exit 1
+    fi
+
+    LINE="source = $SOURCE_PATH"
+    
+    if grep -Fxq "$LINE" "$HYPR_CONF"; then
+        echo "Already installed in $HYPR_CONF"
+    else
+        echo "" >> "$HYPR_CONF"
+        echo "# hypr-smart-brightness auto-config" >> "$HYPR_CONF"
+        echo "$LINE" >> "$HYPR_CONF"
+        echo "Success: Added source line to $HYPR_CONF"
+        echo "Reloading Hyprland..."
+        hyprctl reload
+    fi
+}
+
+uninstall_config() {
+    if [ ! -f "$HYPR_CONF" ]; then
+        echo "Error: $HYPR_CONF not found."
+        exit 1
+    fi
+
+    # Remove the specific lines we added
+    sed -i '/# hypr-smart-brightness auto-config/d' "$HYPR_CONF"
+    sed -i '/source = .*hypr-smart-brightness.conf/d' "$HYPR_CONF"
+    
+    echo "Success: Removed configuration from $HYPR_CONF"
+    echo "Reloading Hyprland..."
+    hyprctl reload
+}
+
+# CLI Flags
+# ==============================================================================
+if [ "$DIRECTION" == "--install" ]; then
+    install_config
+    exit 0
+fi
+
+if [ "$DIRECTION" == "--uninstall" ]; then
+    uninstall_config
+    exit 0
+fi
+
+# Dependency Check
+# ==============================================================================
+for cmd in hyprctl jq brightnessctl; do
+    if ! command -v $cmd &> /dev/null; then
+        echo "Error: Required dependency '$cmd' is missing."
+        exit 1
+    fi
+done
+
+# Main Brightness Logic
+# ==============================================================================
+mkdir -p "$CACHE_DIR"
+
+# 1. Get the name of the currently focused monitor
+FOCUSED_MONITOR=$(hyprctl monitors -j | jq -r '.[] | select(.focused == true).name')
+
+if [ -z "$FOCUSED_MONITOR" ]; then
+    exit 1
+fi
+
+# 2. Check if it's a Laptop Display
+if [[ "$FOCUSED_MONITOR" =~ ^eDP ]] || [[ "$FOCUSED_MONITOR" =~ ^LCD ]] || [[ "$FOCUSED_MONITOR" =~ ^LVDS ]]; then
+    if [ "$DIRECTION" == "up" ]; then
+        brightnessctl set "+${STEP}%" > /dev/null
+    else
+        brightnessctl set "${STEP}%-" > /dev/null
+    fi
+    if [ "$ENABLE_OSD" = true ] && command -v $OSD_CMD &> /dev/null; then
+        $OSD_CMD --brightness raise > /dev/null
+    fi
+    exit 0
+fi
+
+# 3. External Monitor (DDC/CI)
+if ! command -v ddcutil &> /dev/null; then
+    if [ "$ENABLE_OSD" = true ]; then
+         [ "$DIRECTION" == "up" ] && $OSD_CMD --brightness raise
+         [ "$DIRECTION" == "down" ] && $OSD_CMD --brightness lower
+    fi
+    exit 0
+fi
+
+CACHE_FILE="$CACHE_DIR/$FOCUSED_MONITOR"
+BUS_CACHE="$CACHE_DIR/bus_$FOCUSED_MONITOR"
+
+# 3a. Resolve I2C Bus (Optimized)
+if [ -f "$BUS_CACHE" ]; then
+    BUS=$(cat "$BUS_CACHE")
+else
+    BUS=$(ddcutil detect --terse | grep -B 1 "card1-$FOCUSED_MONITOR" | grep "I2C bus" | awk -F'-' '{print $2}')
+    if [ -n "$BUS" ]; then echo "$BUS" > "$BUS_CACHE"; fi
+fi
+
+BUS_ARG=""
+if [ -n "$BUS" ]; then BUS_ARG="--bus $BUS"; fi
+
+# 3b. Determine Current Brightness
+if [ -f "$CACHE_FILE" ]; then
+    CURRENT=$(cat "$CACHE_FILE")
+else
+    CURRENT=$(ddcutil getvcp 10 -t $BUS_ARG --skip-ddc-checks 2>/dev/null | awk '{print $4}')
+    [ -z "$CURRENT" ] && CURRENT=50
+fi
+
+# 3c. Calculate New Value
+if [ "$DIRECTION" == "up" ]; then
+    NEW=$((CURRENT + STEP))
+else
+    NEW=$((CURRENT - STEP))
+fi
+
+if [ "$NEW" -gt 100 ]; then NEW=100; fi
+if [ "$NEW" -lt 0 ]; then NEW=0; fi
+
+# 3d. Update Cache & UI (Instant Feedback)
+echo "$NEW" > "$CACHE_FILE"
+
+if [ "$ENABLE_OSD" = true ] && command -v $OSD_CMD &> /dev/null; then
+    PROGRESS=$(awk -v n=$NEW 'BEGIN {print n/100}')
+    $OSD_CMD \
+        --monitor "$FOCUSED_MONITOR" \
+        --custom-icon display-brightness-symbolic \
+        --custom-progress "$PROGRESS" \
+        --custom-progress-text "${NEW}%" &
+fi
+
+# 3e. Apply to Hardware (Background Async)
+(ddcutil setvcp 10 "$NEW" $BUS_ARG --skip-ddc-checks --sleep-multiplier 0 > /dev/null 2>&1 &)
+
+exit 0
